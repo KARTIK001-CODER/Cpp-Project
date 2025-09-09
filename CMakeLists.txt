@@ -11,8 +11,10 @@ endif()
 
 add_executable(chat_server server.cpp)
 add_executable(chat_client client.cpp)
+add_executable(chat_client_enhanced chat_client_enhanced.cpp)
 
 if (WIN32)
     target_link_libraries(chat_server ws2_32)
     target_link_libraries(chat_client ws2_32)
+    target_link_libraries(chat_client_enhanced ws2_32)
 endif()
