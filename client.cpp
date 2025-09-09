@@ -1,18 +1,26 @@
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <iostream>
+#include <thread>
 #include <string>
+#include "windows_sockets.h"
 #pragma comment(lib, "ws2_32.lib")
 
+void receiveMessages(SOCKET serverSocket) {
+    char buffer[1024];
+    int bytesReceived;
+
+    while ((bytesReceived = recv(serverSocket, buffer, sizeof(buffer), 0)) > 0) {
+        buffer[bytesReceived] = '\0';
+        std::cout << buffer << std::endl;
+    }
+}
+
 int main() {
-    // Initialize Winsock
     WSADATA wsaData;
     if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
         std::cerr << "WSAStartup failed\n";
         return 1;
     }
 
-    // Create socket
     SOCKET clientSocket = socket(AF_INET, SOCK_STREAM, 0);
     if (clientSocket == INVALID_SOCKET) {
         std::cerr << "Socket creation failed\n";
@@ -20,13 +28,11 @@ int main() {
         return 1;
     }
 
-    // Server address
     sockaddr_in serverAddr{};
     serverAddr.sin_family = AF_INET;
-    serverAddr.sin_port = htons(8080); // match server port
-    inet_pton(AF_INET, "127.0.0.1", &serverAddr.sin_addr);
+    serverAddr.sin_port = htons(8080);
+    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
 
-    // Connect to server
     if (connect(clientSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
         std::cerr << "Connection failed\n";
         closesocket(clientSocket);
@@ -34,24 +40,19 @@ int main() {
         return 1;
     }
 
-    std::cout << "Connected to server. Type a message: ";
+    std::cout << "Connected to server. You can start typing messages...\n";
+
+    std::thread receiver(receiveMessages, clientSocket);
+    receiver.detach();
+
     std::string msg;
-    std::getline(std::cin, msg);
-
-    // Send message
-    send(clientSocket, msg.c_str(), msg.size(), 0);
-
-    // Receive echo
-    char buffer[1024];
-    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-    if (bytesReceived > 0) {
-        buffer[bytesReceived] = '\0';
-        std::cout << "Server echoed: " << buffer << "\n";
+    while (true) {
+        std::getline(std::cin, msg);
+        if (msg.empty()) continue;
+        send(clientSocket, msg.c_str(), msg.size(), 0);
     }
 
-    // Cleanup
     closesocket(clientSocket);
     WSACleanup();
-
     return 0;
 }

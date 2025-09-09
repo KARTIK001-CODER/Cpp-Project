@@ -1,13 +1,49 @@
-#include <winsock2.h>
-#include <ws2tcpip.h>
 #include <iostream>
+#include <thread>
+#include <vector>
+#include <mutex>
+#include <string>
+#include <algorithm>
+#include "windows_sockets.h"
 #pragma comment(lib, "ws2_32.lib")
+
+
+std::vector<SOCKET> clients;
+std::mutex clientsMutex;
+
+void broadcastMessage(const std::string& msg, SOCKET sender) {
+    std::lock_guard<std::mutex> lock(clientsMutex);
+    for (SOCKET client : clients) {
+        if (client != sender) {
+            send(client, msg.c_str(), msg.size(), 0);
+        }
+    }
+}
+
+void handleClient(SOCKET clientSocket) {
+    char buffer[1024];
+    int bytesReceived;
+
+    while ((bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0)) > 0) {
+        buffer[bytesReceived] = '\0';
+        std::string msg(buffer);
+        std::cout << "Received: " << msg << "\n";
+        broadcastMessage(msg, clientSocket);
+    }
+
+    {
+        std::lock_guard<std::mutex> lock(clientsMutex);
+        clients.erase(std::remove(clients.begin(), clients.end(), clientSocket), clients.end());
+    }
+
+    closesocket(clientSocket);
+    std::cout << "Client disconnected\n";
+}
 
 int main() {
     WSADATA wsaData;
-    int result = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (result != 0) {
-        std::cerr << "WSAStartup failed: " << result << "\n";
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed\n";
         return 1;
     }
 
@@ -39,29 +75,22 @@ int main() {
 
     std::cout << "Server listening on port 8080...\n";
 
-    SOCKET clientSocket;
-    sockaddr_in clientAddr;
-    int clientSize = sizeof(clientAddr);
+    while (true) {
+        sockaddr_in clientAddr;
+        int clientSize = sizeof(clientAddr);
+        SOCKET clientSocket = accept(serverSocket, (sockaddr*)&clientAddr, &clientSize);
 
-    clientSocket = accept(serverSocket, (sockaddr*)&clientAddr, &clientSize);
-    if (clientSocket == INVALID_SOCKET) {
-        std::cerr << "Accept failed\n";
-        closesocket(serverSocket);
-        WSACleanup();
-        return 1;
+        if (clientSocket != INVALID_SOCKET) {
+            {
+                std::lock_guard<std::mutex> lock(clientsMutex);
+                clients.push_back(clientSocket);
+            }
+            std::thread(handleClient, clientSocket).detach();
+            std::cout << "New client connected\n";
+        }
     }
 
-    char buffer[1024];
-    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
-    if (bytesReceived > 0) {
-        buffer[bytesReceived] = '\0';
-        std::cout << "Received: " << buffer << "\n";
-        send(clientSocket, buffer, bytesReceived, 0);
-    }
-
-    closesocket(clientSocket);
     closesocket(serverSocket);
     WSACleanup();
-
     return 0;
 }
