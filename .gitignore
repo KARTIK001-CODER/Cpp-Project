@@ -1,0 +1,18 @@
+# CMake build
+/build/
+/CMakeFiles/
+/CMakeCache.txt
+cmake_install.cmake
+Makefile
+
+# Executables
+chat_server
+*.exe
+*.out
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Database files (optional)
+*.db
