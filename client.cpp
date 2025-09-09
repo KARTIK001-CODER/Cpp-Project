@@ -1,64 +1,57 @@
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
-#include <cstring>
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <iostream>
 #include <string>
+#pragma comment(lib, "ws2_32.lib")
 
-int main(int argc, char** argv) {
-    if (argc < 3) {
-        std::cout << "Usage: ./client <server-ip> <port>\n";
+int main() {
+    // Initialize Winsock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed\n";
         return 1;
     }
 
-    const char* server_ip = argv[1];
-    int port = std::stoi(argv[2]);
-
-    int sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == -1) {
-        perror("socket");
+    // Create socket
+    SOCKET clientSocket = socket(AF_INET, SOCK_STREAM, 0);
+    if (clientSocket == INVALID_SOCKET) {
+        std::cerr << "Socket creation failed\n";
+        WSACleanup();
         return 1;
     }
 
-    sockaddr_in serv_addr{};
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_port = htons(port);
+    // Server address
+    sockaddr_in serverAddr{};
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(8080); // match server port
+    inet_pton(AF_INET, "127.0.0.1", &serverAddr.sin_addr);
 
-    if (inet_pton(AF_INET, server_ip, &serv_addr.sin_addr) <= 0) {
-        perror("inet_pton");
-        close(sock);
+    // Connect to server
+    if (connect(clientSocket, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+        std::cerr << "Connection failed\n";
+        closesocket(clientSocket);
+        WSACleanup();
         return 1;
     }
 
-    if (connect(sock, (sockaddr*)&serv_addr, sizeof(serv_addr)) == -1) {
-        perror("connect");
-        close(sock);
-        return 1;
-    }
+    std::cout << "Connected to server. Type a message: ";
+    std::string msg;
+    std::getline(std::cin, msg);
 
-    std::cout << "Connected to server. Type messages and press Enter.\n";
-    std::string line;
+    // Send message
+    send(clientSocket, msg.c_str(), msg.size(), 0);
+
+    // Receive echo
     char buffer[1024];
-
-    while (std::getline(std::cin, line)) {
-        if (line.empty()) continue;
-        ssize_t sent = send(sock, line.c_str(), (ssize_t)line.size(), 0);
-        if (sent == -1) {
-            perror("send");
-            break;
-        }
-
-        ssize_t n = recv(sock, buffer, sizeof(buffer) - 1, 0);
-        if (n <= 0) {
-            std::cout << "Disconnected from server\n";
-            break;
-        }
-        buffer[n] = '\0';
-        std::cout << "Echo from server: " << buffer << std::endl;
+    int bytesReceived = recv(clientSocket, buffer, sizeof(buffer), 0);
+    if (bytesReceived > 0) {
+        buffer[bytesReceived] = '\0';
+        std::cout << "Server echoed: " << buffer << "\n";
     }
 
-    close(sock);
+    // Cleanup
+    closesocket(clientSocket);
+    WSACleanup();
+
     return 0;
 }
